@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 def add_features(df, window_size='7D'):
     df = df.copy()
@@ -6,6 +7,10 @@ def add_features(df, window_size='7D'):
     # Ensure correct dtypes
     df['date_time'] = pd.to_datetime(df['date_time'])
     df['streamflow_cfs'] = pd.to_numeric(df['streamflow_cfs'], errors='coerce')
+    
+    # Log transform for better scaling
+    import numpy as np
+    df['log_streamflow'] = np.log1p(df['streamflow_cfs'])
 
     df.set_index('date_time', inplace=True)
     df.sort_index(inplace=True)

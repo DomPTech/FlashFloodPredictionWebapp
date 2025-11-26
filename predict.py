@@ -15,13 +15,17 @@ def predict_flash_flood(model, scaler, site_number, prediction_date=None, lookba
     start_date = end_date - timedelta(days=lookback_days)
 
     df = fetch_historical_streamflow_data(site_number, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
-    df = add_features(df)
-
     if df.empty:
         print("Not enough data for prediction.")
         return None
 
-    features = ['streamflow_cfs', 'streamflow_p10', 'streamflow_p50',
+    df = add_features(df)
+
+    if df.empty:
+        print("Not enough data for prediction after processing.")
+        return None
+
+    features = ['log_streamflow', 'streamflow_p10', 'streamflow_p50',
                 'streamflow_p90', 'streamflow_diff', 'streamflow_pct_change']
 
     latest = df.set_index("date_time")[features].asof(end_date)

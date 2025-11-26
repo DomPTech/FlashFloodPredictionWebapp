@@ -90,7 +90,8 @@ def fetch_historical_streamflow_data(site_number, start_date, end_date):
         if len(records) != 0:
             df['date_time'] = pd.to_datetime(df['date_time'])
         else:
-            print(df.head())
+            # Ensure columns exist even if empty
+            df = pd.DataFrame(columns=['date_time', 'streamflow_cfs'])
         return df
     else:
         raise Exception(f"Error fetching historical data: {response.status_code} - {response.text}")
