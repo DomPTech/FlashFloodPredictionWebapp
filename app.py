@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 import joblib
 from datetime import datetime
-from data_fetcher import fetch_streamflow_data
+from data_fetcher import fetch_streamflow_data, fetch_sites_by_bbox
 from predict import predict_flash_flood
 from model import FlashFloodClassifier
 
@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # Title and description
-st.title("🌊 Flash Flood Prediction App")
+st.title("Flash Flood Prediction App")
 st.markdown("""
 This application predicts the probability of a flash flood at a specific USGS site based on historical streamflow data.
 Select your location and a date to get started.
@@ -63,6 +63,112 @@ states = [
 ]
 selected_state = st.sidebar.selectbox("Select State", states, index=states.index('TN'))
 
+# --- Find My Location Feature ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("📍 Find Nearby Sites")
+
+# Check for query params (location data)
+query_params = st.query_params
+user_lat = query_params.get("lat")
+user_lon = query_params.get("lon")
+
+if st.sidebar.button("Find My Location"):
+    # JavaScript to get location and reload page with params
+    js = """
+    <script>
+    async function getLocationAndRedirect() {
+    // Check permission status first (optional, helpful for debugging)
+    try {
+        if (navigator.permissions) {
+        const p = await navigator.permissions.query({ name: 'geolocation' });
+        console.log('geolocation permission state:', p.state);
+        // You can listen for changes:
+        // p.onchange = () => console.log('perm changed', p.state);
+        }
+    } catch (e) {
+        console.warn('Permissions API not available', e);
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const url = new URL(window.location.href);
+        url.searchParams.set('lat', lat);
+        url.searchParams.set('lon', lon);
+        window.location.href = url.toString();
+        },
+        (error) => {
+        // Log entire error object for debugging
+        console.error('geolocation error object:', error);
+
+        // Map numeric code to human-readable
+        const codeMap = {
+            1: 'PERMISSION_DENIED',
+            2: 'POSITION_UNAVAILABLE',
+            3: 'TIMEOUT'
+        };
+        const codeName = codeMap[error.code] || 'UNKNOWN_ERROR';
+
+        // Some browsers leave error.message empty — show code and raw object
+        const msg = error.message || '(no message provided by browser)';
+        alert(`Geolocation error (${codeName} / code ${error.code}): ${msg}`);
+
+        // Helpful fallback: show something in the page or console
+        // document.body.insertAdjacentHTML('beforeend',
+        //   `<p style="color:red">Could not get location: ${codeName}</p>`);
+        },
+        {
+        enableHighAccuracy: false,
+        timeout: 10000,      // 10s timeout
+        maximumAge: 0
+        }
+    );
+    }
+
+    // Call after load (not strictly required but often helpful)
+    if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', getLocationAndRedirect);
+    } else {
+    getLocationAndRedirect();
+    }
+    </script>
+    """
+    st.components.v1.html(js, height=0)
+
+nearby_sites = []
+if user_lat and user_lon:
+    try:
+        lat = float(user_lat)
+        lon = float(user_lon)
+        st.sidebar.success(f"Location found: {lat:.4f}, {lon:.4f}")
+        
+        # Define a bounding box (approx +/- 0.5 degrees, roughly 35 miles)
+        bbox_margin = 0.5
+        with st.spinner("Scanning for nearby sites..."):
+            nearby_sites = fetch_sites_by_bbox(
+                lon - bbox_margin, 
+                lat - bbox_margin, 
+                lon + bbox_margin, 
+                lat + bbox_margin
+            )
+            
+        if nearby_sites:
+            # Calculate distance and sort
+            for site in nearby_sites:
+                site['dist'] = ((site['lat'] - lat)**2 + (site['lon'] - lon)**2)**0.5
+            
+            nearby_sites.sort(key=lambda x: x['dist'])
+            nearby_sites = nearby_sites[:5] # Top 5
+            st.sidebar.info(f"Found {len(nearby_sites)} nearby sites.")
+        else:
+            st.sidebar.warning("No active sites found nearby.")
+            
+    except ValueError:
+        st.sidebar.error("Invalid coordinates received.")
+
+# --------------------------------
+
 # Fetch Sites for the selected state
 @st.cache_data
 def get_sites_for_state(state_code):
@@ -97,7 +203,17 @@ if not sites:
     st.warning(f"No active streamflow sites found for {selected_state}.")
 else:
     # Site Selection
-    site_options = {f"{s['name']} ({s['code']})": s for s in sites}
+    # If we found nearby sites, prioritize them in the list or let user select
+    if nearby_sites:
+        st.info("Showing nearby sites based on your location.")
+        site_options = {f"{s['name']} ({s['code']}) - {s['dist']:.2f} deg away": s for s in nearby_sites}
+    else:
+        site_options = {f"{s['name']} ({s['code']})": s for s in sites}
+    
+    if not site_options:
+         st.warning("No sites available to select.")
+         st.stop()
+
     selected_site_label = st.sidebar.selectbox("Select Site", list(site_options.keys()))
     selected_site_data = site_options[selected_site_label]
 
