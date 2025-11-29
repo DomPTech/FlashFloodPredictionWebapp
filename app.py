@@ -227,16 +227,99 @@ else:
     # Date Selection
     prediction_date = st.sidebar.date_input("Prediction Date", datetime.now())
 
+    # --- Chatbot Tools ---
+    def predict_for_chatbot(site_code=None, lat=None, lon=None, site_name=None, query=None):
+        """
+        Callback function for the chatbot to get flood probability.
+        Supports site_code, lat/lon, or site_name/query search.
+        """
+        try:
+            target_site_code = site_code
+            
+            # If lat/lon provided, find nearest site
+            if lat is not None and lon is not None:
+                # Reuse the bbox logic from earlier, but maybe just a small box
+                bbox_margin = 0.1
+                nearby = fetch_sites_by_bbox(lon - bbox_margin, lat - bbox_margin, lon + bbox_margin, lat + bbox_margin)
+                if nearby:
+                    # Find closest
+                    nearby.sort(key=lambda x: ((x['lat'] - lat)**2 + (x['lon'] - lon)**2)**0.5)
+                    target_site_code = nearby[0]['code']
+                else:
+                    return "No nearby USGS sites found for those coordinates."
+            
+            # If site_name or query provided, try to find a match in the current state's sites
+            elif site_name or query:
+                search_term = (site_name or query).lower()
+                # Use the 'sites' list which is loaded for the selected state
+                # 'sites' is available in the local scope because this function is defined inside the script
+                # where 'sites' is defined.
+                
+                if not sites:
+                    return "No sites available to search. Please select a state first."
+                
+                # Simple substring match first
+                matches = [s for s in sites if search_term in s['name'].lower()]
+                
+                if not matches:
+                    # Try finding by code if query is numeric
+                    if search_term.isdigit():
+                         matches = [s for s in sites if search_term in s['code']]
+                
+                if matches:
+                    # Pick the first one or the shortest name match (heuristic)
+                    # Let's pick the one with the name that is closest in length to the query, 
+                    # assuming exact matches are better.
+                    matches.sort(key=lambda x: len(x['name']))
+                    best_match = matches[0]
+                    target_site_code = best_match['code']
+                    # Inform the user which site was picked
+                    # We can't easily print to chat here, but we can include it in the return string
+                    site_info_str = f"Found site: {best_match['name']} ({best_match['code']}). "
+                else:
+                    return f"Could not find any sites matching '{search_term}' in {selected_state}."
+            
+            if not target_site_code:
+                # If no site specified, try to use the currently selected site in the UI
+                if 'selected_site_data' in locals():
+                     target_site_code = selected_site_data['code']
+                else:
+                    return "Please specify a site code, name, or location."
+
+            # Perform prediction
+            # Use today's date for "current" prediction
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            prob = predict_flash_flood(model, scaler, target_site_code, prediction_date=date_str)
+            
+            prefix = site_info_str if 'site_info_str' in locals() else ""
+            
+            if prob is not None:
+                risk_level = "Low" if prob < 0.3 else "Moderate" if prob < 0.7 else "High"
+                return f"{prefix}The flood probability for site {target_site_code} is {prob:.1%} ({risk_level} Risk)."
+            else:
+                return f"{prefix}Could not generate prediction (insufficient data)."
+                
+        except Exception as e:
+            return f"Error calculating prediction: {str(e)}"
+
+    chatbot_tools = {
+        "get_flood_probability": predict_for_chatbot
+    }
+
     # Initialize Chatbot
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
     # Re-initialize if token changes
     if api_token and st.session_state.get("last_token") != api_token:
-        st.session_state.chatbot = HuggingFaceChatbot(api_token=api_token)
+        st.session_state.chatbot = HuggingFaceChatbot(api_token=api_token, tools=chatbot_tools)
         st.session_state.last_token = api_token
     elif "chatbot" not in st.session_state and api_token:
-         st.session_state.chatbot = HuggingFaceChatbot(api_token=api_token)
+         st.session_state.chatbot = HuggingFaceChatbot(api_token=api_token, tools=chatbot_tools)
+    
+    # Ensure tools are updated if chatbot exists (in case of code reload)
+    if "chatbot" in st.session_state and st.session_state.chatbot:
+        st.session_state.chatbot.tools = chatbot_tools
 
     # Main Content Area
     tab1, tab2 = st.tabs(["Flood Prediction", "AI Assistant"])
