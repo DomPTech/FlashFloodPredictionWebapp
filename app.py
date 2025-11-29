@@ -6,6 +6,8 @@ from datetime import datetime
 from data_fetcher import fetch_streamflow_data, fetch_sites_by_bbox
 from predict import predict_flash_flood
 from model import FlashFloodClassifier
+from chatbot import HuggingFaceChatbot
+import os
 
 # Page configuration
 st.set_page_config(
@@ -51,6 +53,11 @@ if model is None or scaler is None:
 
 # Sidebar for inputs
 st.sidebar.header("Configuration")
+
+# API Token
+api_token = st.sidebar.text_input("HuggingFace API Token", type="password", help="Required for AI Assistant. Get one for free at huggingface.co/settings/tokens")
+if not api_token:
+    api_token = os.environ.get("HUGGINGFACEHUB_API_TOKEN")
 
 # State Selection
 # List of US states (abbreviated)
@@ -220,49 +227,92 @@ else:
     # Date Selection
     prediction_date = st.sidebar.date_input("Prediction Date", datetime.now())
 
+    # Initialize Chatbot
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Re-initialize if token changes
+    if api_token and st.session_state.get("last_token") != api_token:
+        st.session_state.chatbot = HuggingFaceChatbot(api_token=api_token)
+        st.session_state.last_token = api_token
+    elif "chatbot" not in st.session_state and api_token:
+         st.session_state.chatbot = HuggingFaceChatbot(api_token=api_token)
+
     # Main Content Area
-    col1, col2 = st.columns([2, 1])
+    tab1, tab2 = st.tabs(["Flood Prediction", "AI Assistant"])
 
-    with col1:
-        st.subheader(f"📍 {selected_site_data['name']}")
-        
-        # Map
-        map_data = pd.DataFrame({
-            'lat': [selected_site_data['lat']],
-            'lon': [selected_site_data['lon']]
-        })
-        st.map(map_data)
+    with tab1:
+        col1, col2 = st.columns([2, 1])
 
-    with col2:
-        st.subheader("Prediction")
-        
-        if st.button("Predict Flood Probability", type="primary"):
-            with st.spinner("Calculating probability..."):
-                try:
-                    # Format date for the predict function
-                    date_str = prediction_date.strftime("%Y-%m-%d")
-                    
-                    prob = predict_flash_flood(
-                        model, 
-                        scaler, 
-                        selected_site_data['code'], 
-                        prediction_date=date_str
-                    )
-                    
-                    if prob is not None:
-                        st.metric(label="Flood Probability", value=f"{prob:.2%}")
+        with col1:
+            st.subheader(f"📍 {selected_site_data['name']}")
+            
+            # Map
+            map_data = pd.DataFrame({
+                'lat': [selected_site_data['lat']],
+                'lon': [selected_site_data['lon']]
+            })
+            st.map(map_data)
+
+        with col2:
+            st.subheader("Prediction")
+            
+            if st.button("Predict Flood Probability", type="primary"):
+                with st.spinner("Calculating probability..."):
+                    try:
+                        # Format date for the predict function
+                        date_str = prediction_date.strftime("%Y-%m-%d")
                         
-                        if prob < 0.3:
-                            st.success("Low Risk")
-                        elif prob < 0.7:
-                            st.warning("Moderate Risk")
+                        prob = predict_flash_flood(
+                            model, 
+                            scaler, 
+                            selected_site_data['code'], 
+                            prediction_date=date_str
+                        )
+                        
+                        if prob is not None:
+                            st.metric(label="Flood Probability", value=f"{prob:.2%}")
+                            
+                            if prob < 0.3:
+                                st.success("Low Risk")
+                            elif prob < 0.7:
+                                st.warning("Moderate Risk")
+                            else:
+                                st.error("High Risk")
                         else:
-                            st.error("High Risk")
+                            st.error("Could not generate prediction. Insufficient data.")
+                            
+                    except Exception as e:
+                        st.error(f"An error occurred during prediction: {e}")
+
+    with tab2:
+        st.subheader("💬 AI Flood Assistant")
+        
+        if not api_token:
+            st.warning("Please enter a HuggingFace API Token in the sidebar to use the AI Assistant.")
+            st.markdown("[Get a free token here](https://huggingface.co/settings/tokens)")
+        else:
+            # Display chat messages
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            # Chat input
+            if prompt := st.chat_input("Ask about floods, safety, or this app..."):
+                # Add user message to history
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                # Generate response
+                with st.chat_message("assistant"):
+                    if st.session_state.chatbot:
+                        with st.spinner("Thinking..."):
+                            response = st.session_state.chatbot.get_response(prompt, st.session_state.messages[:-1])
+                            st.markdown(response)
+                            st.session_state.messages.append({"role": "assistant", "content": response})
                     else:
-                        st.error("Could not generate prediction. Insufficient data.")
-                        
-                except Exception as e:
-                    st.error(f"An error occurred during prediction: {e}")
+                        st.error("Chatbot not initialized. Please check your token.")
 
     # Debug info (optional, can be removed)
     with st.expander("Debug Information"):
