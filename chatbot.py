@@ -1,14 +1,15 @@
 import os
 from openai import OpenAI
+import json
 
 class HuggingFaceChatbot:
-    def __init__(self, model_id="meta-llama/Llama-3.1-8B-Instruct:novita", api_token=None, tools=None):
+    def __init__(self, model_id="deepseek-ai/DeepSeek-R1-0528", api_token=None, tools=None):
         """
         Initialize the HuggingFace Chatbot using the OpenAI client.
         
         Args:
             model_id (str): The HuggingFace model ID to use. 
-                            Defaults to 'meta-llama/Llama-3.1-8B-Instruct:novita'.
+                            Defaults to 'deepseek-ai/DeepSeek-R1-0528'.
             api_token (str): Optional HuggingFace API token.
             tools (dict): Optional dictionary of tool functions. 
                           Format: {"tool_name": function_reference}
@@ -51,86 +52,118 @@ class HuggingFaceChatbot:
             "You are a helpful assistant for a Flash Flood Prediction Application. "
             "The app helps users check flood probability at USGS sites based on streamflow data. "
             "Answer questions about floods, safety, and how to interpret risk levels (Low < 30%, Moderate < 70%, High >= 70%). "
-            "Keep answers concise and helpful.\n\n"
-            "TOOLS AVAILABLE:\n"
-            "If the user asks for a flood prediction or probability at a specific location, "
-            "you can use the 'get_flood_probability' tool. "
-            "To use a tool, your response must be ONLY a JSON object in this format:\n"
-            '{"tool": "get_flood_probability", "site_code": "12345678"}\n'
-            "OR if coordinates are provided:\n"
-            '{"tool": "get_flood_probability", "lat": 36.16, "lon": -86.78}\n'
-            "OR if a site name or general location is provided:\n"
-            '{"tool": "get_flood_probability", "site_name": "Beaver Creek"}\n'
-            "Do not add any other text when using a tool."
+            "Keep answers concise and helpful."
         )
         messages.append({"role": "system", "content": system_prompt})
         
         # History
         if history:
             # Ensure history format matches OpenAI expectations (role/content)
-            # Our app stores history as {"role": "user"/"assistant", "content": "..."} which is compatible
             messages.extend(history)
         
         # Current user input
         messages.append({"role": "user", "content": user_input})
         
+        # Define tools schema
+        # We only have one tool for now, but we can expand this
+        tools_schema = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_flood_probability",
+                    "description": "Get the probability of a flood for a specific location.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "site_code": {
+                                "type": "string",
+                                "description": "The USGS site code (e.g., '03432400')."
+                            },
+                            "lat": {
+                                "type": "number",
+                                "description": "Latitude of the location."
+                            },
+                            "lon": {
+                                "type": "number",
+                                "description": "Longitude of the location."
+                            },
+                            "site_name": {
+                                "type": "string",
+                                "description": "Name of the site or location."
+                            }
+                        },
+                        "required": [] 
+                    }
+                }
+            }
+        ]
+        
         try:
+            # First API call
             completion = self.client.chat.completions.create(
                 model=self.model_id,
                 messages=messages,
+                tools=tools_schema,
+                tool_choice="auto",
                 max_tokens=500,
             )
-            response_content = completion.choices[0].message.content
             
-            # Check for tool usage
-            import json
-            import re
+            response_message = completion.choices[0].message
             
-            try:
-                # Look for JSON object in the response
-                # Matches { "tool": ... } allowing for whitespace and newlines
-                # We use a non-greedy match for the content inside braces, but we need to be careful about nested braces.
-                # Since our tool calls are simple, a simple regex might suffice, or we can try to find the first '{' and last '}'
+            # Check if the model wants to call a tool
+            if response_message.tool_calls:
+                # Add the assistant's response (with tool calls) to history
+                messages.append(response_message)
                 
-                # Regex to find a JSON-like block containing "tool":
-                # This is a heuristic: find a block starting with { and containing "tool"
-                match = re.search(r'(\{.*?"tool":.*?\})', response_content, re.DOTALL)
-                
-                if match:
-                    json_str = match.group(1)
-                    try:
-                        tool_data = json.loads(json_str)
-                        tool_name = tool_data.get("tool")
+                # Process each tool call
+                for tool_call in response_message.tool_calls:
+                    function_name = tool_call.function.name
+                    function_args = json.loads(tool_call.function.arguments)
+                    
+                    if function_name in self.tools:
+                        # Execute tool
+                        tool_func = self.tools[function_name]
+                        tool_result = tool_func(**function_args)
                         
-                        if tool_name in self.tools:
-                            # Execute tool
-                            tool_func = self.tools[tool_name]
-                            
-                            # Extract args
-                            kwargs = {k: v for k, v in tool_data.items() if k != "tool"}
-                            
-                            # Call function
-                            tool_result = tool_func(**kwargs)
-                            
-                            # Append result to messages and ask for final response
-                            messages.append({"role": "assistant", "content": response_content})
-                            messages.append({"role": "system", "content": f"Tool Output: {tool_result}. Now answer the user's question based on this output."})
-                            
-                            # Second call to get final answer
-                            final_completion = self.client.chat.completions.create(
-                                model=self.model_id,
-                                messages=messages,
-                                max_tokens=500,
-                            )
-                            return final_completion.choices[0].message.content
-                    except json.JSONDecodeError:
-                        pass
-            except Exception as e:
-                return f"Error executing tool: {str(e)}"
+                        # Add tool result to messages
+                        messages.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": function_name,
+                            "content": str(tool_result),
+                        })
+                    else:
+                        # Handle unknown tool
+                        messages.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": function_name,
+                            "content": f"Error: Tool '{function_name}' not found.",
+                        })
+                
+                # Second API call to get the final response
+                final_completion = self.client.chat.completions.create(
+                    model=self.model_id,
+                    messages=messages,
+                    max_tokens=500,
+                )
+                return self._clean_response(final_completion.choices[0].message.content)
+            
+            return self._clean_response(response_message.content)
 
-            return response_content
         except Exception as e:
             return f"Error connecting to chatbot: {str(e)}"
+
+    def _clean_response(self, content):
+        """
+        Remove <think>...</think> tags from the response content.
+        """
+        if not content:
+            return ""
+        import re
+        # Remove <think>...</think> blocks, including newlines
+        cleaned_content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+        return cleaned_content.strip()
 
 if __name__ == "__main__":
     # Simple test
