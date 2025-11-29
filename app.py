@@ -7,6 +7,7 @@ from data_fetcher import fetch_streamflow_data, fetch_sites_by_bbox
 from predict import predict_flash_flood
 from model import FlashFloodClassifier
 from chatbot import HuggingFaceChatbot
+from safety_data import fetch_nws_alerts, get_red_cross_safety_tips
 import os
 
 # Page configuration
@@ -322,7 +323,7 @@ else:
         st.session_state.chatbot.tools = chatbot_tools
 
     # Main Content Area
-    tab1, tab2 = st.tabs(["Flood Prediction", "AI Assistant"])
+    tab1, tab2, tab3 = st.tabs(["Flood Prediction", "AI Assistant", "Safety Info"])
 
     with tab1:
         col1, col2 = st.columns([2, 1])
@@ -369,7 +370,7 @@ else:
                         st.error(f"An error occurred during prediction: {e}")
 
     with tab2:
-        st.subheader("💬 AI Flood Assistant")
+        st.subheader("AI Flood Assistant")
         
         if not api_token:
             st.warning("Please enter a HuggingFace API Token in the sidebar to use the AI Assistant.")
@@ -396,6 +397,48 @@ else:
                             st.session_state.messages.append({"role": "assistant", "content": response})
                     else:
                         st.error("Chatbot not initialized. Please check your token.")
+
+    with tab3:
+        # --- NWS Alerts ---
+        st.markdown("### Active NWS Alerts")
+        
+        # Determine location for alerts
+        alert_lat, alert_lon = None, None
+        if user_lat and user_lon:
+            alert_lat, alert_lon = float(user_lat), float(user_lon)
+            location_desc = "your location"
+        else:
+            location_desc = f"{selected_state}"
+            
+        with st.spinner(f"Fetching active alerts for {location_desc}..."):
+            alerts = fetch_nws_alerts(state_code=selected_state, lat=alert_lat, lon=alert_lon)
+            
+        if alerts:
+            st.warning(f"Found {len(alerts)} active alert(s) for {location_desc}.")
+            for alert in alerts:
+                with st.expander(f"**{alert['event']}** - {alert['severity']} Severity"):
+                    st.markdown(f"**Headline:** {alert['headline']}")
+                    st.markdown(f"**Area:** {alert['areaDesc']}")
+                    st.markdown(f"**Description:**\n{alert['description']}")
+                    if alert['instruction']:
+                        st.info(f"**Instruction:**\n{alert['instruction']}")
+                    st.caption(f"Effective: {alert['effective']} | Expires: {alert['expires']}")
+        else:
+            st.success(f"No active NWS alerts found for {location_desc} at this time.")
+            
+        st.markdown("---")
+        
+        # --- Red Cross Safety Tips ---
+        st.markdown("### American Red Cross Flood Safety Tips")
+        
+        tips = get_red_cross_safety_tips()
+        
+        for category, items in tips.items():
+            with st.expander(f"**{category}**", expanded=True):
+                for item in items:
+                    st.markdown(f"- {item}")
+        
+        st.caption("Source: American Red Cross Flood Safety Guidelines")
 
     # Debug info (optional, can be removed)
     with st.expander("Debug Information"):
