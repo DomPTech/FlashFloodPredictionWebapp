@@ -95,6 +95,23 @@ class HuggingFaceChatbot:
                         "required": [] 
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_flood_news",
+                    "description": "Get recent flash flood news for a specific location.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location_query": {
+                                "type": "string",
+                                "description": "The location to search for news (e.g., 'Nashville, TN')."
+                            }
+                        },
+                        "required": ["location_query"] 
+                    }
+                }
             }
         ]
         

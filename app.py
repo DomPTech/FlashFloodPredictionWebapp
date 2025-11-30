@@ -9,6 +9,10 @@ from model import FlashFloodClassifier
 from chatbot import HuggingFaceChatbot
 from safety_data import fetch_nws_alerts, get_red_cross_safety_tips
 import os
+import folium
+from folium.plugins import Draw
+from streamlit_folium import st_folium
+from news_collector import fetch_flood_news, get_location_name
 
 # Page configuration
 st.set_page_config(
@@ -303,8 +307,22 @@ else:
         except Exception as e:
             return f"Error calculating prediction: {str(e)}"
 
+    def get_flood_news_for_chatbot(location_query):
+        try:
+            items = fetch_flood_news(location_query)
+            if not items:
+                return f"No recent flash flood news found for {location_query}."
+            
+            response = f"Found {len(items)} news items for {location_query}:\n"
+            for item in items[:3]: # Limit to 3 for chat
+                response += f"- {item['title']} ({item['published']})\n"
+            return response
+        except Exception as e:
+            return f"Error fetching news: {str(e)}"
+
     chatbot_tools = {
-        "get_flood_probability": predict_for_chatbot
+        "get_flood_probability": predict_for_chatbot,
+        "get_flood_news": get_flood_news_for_chatbot
     }
 
     # Initialize Chatbot
@@ -323,7 +341,7 @@ else:
         st.session_state.chatbot.tools = chatbot_tools
 
     # Main Content Area
-    tab1, tab2, tab3 = st.tabs(["Flood Prediction", "AI Assistant", "Safety Info"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Flood Prediction", "AI Assistant", "Safety Info", "Historical News"])
 
     with tab1:
         col1, col2 = st.columns([2, 1])
@@ -439,6 +457,77 @@ else:
                     st.markdown(f"- {item}")
         
         st.caption("Source: American Red Cross Flood Safety Guidelines")
+
+    with tab4:
+        st.subheader("📰 Historical Flash Flood News")
+        st.markdown("Draw a square (rectangle) on the map to search for flash flood news in that area.")
+
+        # Determine map center
+        map_center = [36.1627, -86.7816] # Default
+        if 'selected_site_data' in locals():
+            map_center = [selected_site_data['lat'], selected_site_data['lon']]
+        elif user_lat and user_lon:
+            try:
+                map_center = [float(user_lat), float(user_lon)]
+            except:
+                pass
+
+        m = folium.Map(location=map_center, zoom_start=10)
+        
+        # Add Draw control - restrict to rectangle for simplicity
+        draw = Draw(
+            export=False,
+            position='topleft',
+            draw_options={
+                'polyline': False,
+                'polygon': False,
+                'circle': False,
+                'marker': False,
+                'circlemarker': False,
+                'rectangle': True
+            },
+            edit_options={'edit': False}
+        )
+        draw.add_to(m)
+
+        st.markdown("**Use the rectangle tool on the left of the map to select an area.**")
+        output = st_folium(m, width=None, height=500)
+
+        if output and output.get("last_active_drawing"):
+             geometry = output["last_active_drawing"]["geometry"]
+             # geometry is GeoJSON (Polygon). Coordinates are [[lon, lat], ...]
+             # Note: GeoJSON uses [lon, lat]
+             coords = geometry['coordinates'][0] 
+             lons = [c[0] for c in coords]
+             lats = [c[1] for c in coords]
+             
+             center_lat = sum(lats) / len(lats)
+             center_lon = sum(lons) / len(lons)
+             
+             st.divider()
+             st.info(f"Analyzing area centered at {center_lat:.4f}, {center_lon:.4f}...")
+             
+             with st.spinner("Identifying location and fetching news..."):
+                 location_name = get_location_name(center_lat, center_lon)
+                 
+                 if location_name:
+                     st.success(f"Location identified: **{location_name}**")
+                     news_items = fetch_flood_news(location_name)
+                     
+                     if news_items:
+                         st.write(f"Found {len(news_items)} news items:")
+                         for item in news_items:
+                             # Clean up summary HTML tags if any (basic)
+                             summary_text = item['summary'].replace("<b>", "**").replace("</b>", "**").replace("&nbsp;", " ")
+                             
+                             with st.expander(f"{item['title']}"):
+                                 st.caption(f"{item['published']} | {item['source']}")
+                                 st.markdown(summary_text, unsafe_allow_html=True)
+                                 st.markdown(f"[Read full article]({item['link']})")
+                     else:
+                         st.warning(f"No specific flash flood news found for '{location_name}' in the recent archives.")
+                 else:
+                     st.error("Could not identify a valid location name for this area. Please try a more populated area.")
 
     # Debug info (optional, can be removed)
     with st.expander("Debug Information"):
