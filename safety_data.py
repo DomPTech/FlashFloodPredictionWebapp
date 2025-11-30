@@ -78,3 +78,20 @@ def get_red_cross_safety_tips():
             "**Electrical Safety**: Do not touch electrical equipment if it is wet or if you are standing in water. If it is safe to do so, turn off the electricity at the main breaker or fuse box to prevent electric shock."
         ]
     }
+
+def get_shelter_info():
+    """
+    Returns a dictionary of shelter resources and higher ground advice.
+    """
+    return {
+        "Find a Shelter": [
+            "**Red Cross Shelter Locator**: Visit [redcross.org/shelter](https://www.redcross.org/get-help/disaster-relief-and-recovery-services/find-open-shelters.html) to find open shelters near you.",
+            "**FEMA Mobile App**: Download the FEMA App to find open shelters and disaster recovery centers.",
+            "**Text for Shelter**: Text **SHELTER** and your **Zip Code** to **43362** (4FEMA) to find the nearest shelter (standard message rates apply)."
+        ],
+        "Higher Ground Advice": [
+            "**Identify Higher Ground**: Look for hills, multi-story buildings, or designated evacuation points in your community that are above the flood level.",
+            "**Move Immediately**: If you are in a low-lying area and flash flooding is possible, move to higher ground immediately. Do not wait for an official warning.",
+            "**Avoid Attics**: Do not climb into a closed attic to avoid rising floodwater, as you may become trapped. Go to the roof only if necessary and signal for help."
+        ]
+    }

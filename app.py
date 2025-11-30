@@ -7,7 +7,7 @@ from data_fetcher import fetch_streamflow_data, fetch_sites_by_bbox
 from predict import predict_flash_flood
 from model import FlashFloodClassifier
 from chatbot import HuggingFaceChatbot
-from safety_data import fetch_nws_alerts, get_red_cross_safety_tips
+from safety_data import fetch_nws_alerts, get_red_cross_safety_tips, get_shelter_info
 import os
 import folium
 from folium.plugins import Draw
@@ -456,10 +456,24 @@ else:
                 for item in items:
                     st.markdown(f"- {item}")
         
-        st.caption("Source: American Red Cross Flood Safety Guidelines")
+    st.caption("Source: American Red Cross Flood Safety Guidelines")
+
+    st.markdown("---")
+
+    # --- Higher Ground & Safe Shelters ---
+    st.markdown("### Higher Ground & Safe Shelters")
+    
+    shelter_info = get_shelter_info()
+    
+    for category, items in shelter_info.items():
+        with st.expander(f"**{category}**", expanded=True):
+            for item in items:
+                st.markdown(f"- {item}")
+    
+    st.caption("Sources: American Red Cross, FEMA")
 
     with tab4:
-        st.subheader("📰 Historical Flash Flood News")
+        st.subheader("Historical Flash Flood News")
         st.markdown("Draw a square (rectangle) on the map to search for flash flood news in that area.")
 
         # Determine map center
