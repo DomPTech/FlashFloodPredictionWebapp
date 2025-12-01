@@ -85,7 +85,7 @@ def get_shelter_info():
     """
     return {
         "Find a Shelter": [
-            "**Red Cross Shelter Locator**: Visit [redcross.org/shelter](https://www.redcross.org/get-help/disaster-relief-and-recovery-services/find-open-shelters.html) to find open shelters near you.",
+            "**Red Cross Shelter Locator**: Visit [redcross.org/shelter](https://www.redcross.org/get-help/disaster-relief-and-recovery-services/find-an-open-shelter.html) to find open shelters near you.",
             "**FEMA Mobile App**: Download the FEMA App to find open shelters and disaster recovery centers.",
             "**Text for Shelter**: Text **SHELTER** and your **Zip Code** to **43362** (4FEMA) to find the nearest shelter (standard message rates apply)."
         ],
