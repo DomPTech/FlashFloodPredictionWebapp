@@ -359,7 +359,7 @@ else:
                 location=[selected_site_data['lat'], selected_site_data['lon']],
                 popup=f"{selected_site_data['name']}<br>Code: {selected_site_data['code']}",
                 tooltip=selected_site_data['name'],
-                icon=folium.Icon(color='blue', icon='tint', prefix='fa')
+                icon=folium.Icon(color='red', icon='tint', prefix='fa')
             ).add_to(m)
             
             # Add Draw control for rectangles (for news search)
@@ -378,9 +378,9 @@ else:
             )
             draw.add_to(m)
             
-            st.markdown("**Map Features:** View the selected site (blue marker). Use the rectangle tool to search for historical flood news.")
+            st.markdown("View the selected site (red marker). Use the rectangle tool to search for historical flood news.")
             output = st_folium(m, width=None, height=500)
-
+            
         with col2:
             st.subheader("Flood Prediction")
             
@@ -411,10 +411,13 @@ else:
                             
                     except Exception as e:
                         st.error(f"An error occurred during prediction: {e}")
+
+            # Add visual indicator for where results appear
+            st.info("**Tip:** Draw a rectangle on the map above → Results will appear in the Historical News section below ⬇️")
         
         # Bottom section: Historical News (full width)
         st.divider()
-        st.subheader("📰 Historical News")
+        st.subheader("Historical News")
         
         if output and output.get("last_active_drawing"):
             geometry = output["last_active_drawing"]["geometry"]
@@ -450,7 +453,7 @@ else:
                 else:
                     st.error("Could not identify location. Try a more populated area.")
         else:
-            st.info("👆 Draw a rectangle on the map above to search for historical flood news in that area.")
+            st.info("⬆️ Draw a rectangle on the map above to search for historical flood news in that area.")
 
     with tab2:
         st.subheader("AI Flood Assistant")
