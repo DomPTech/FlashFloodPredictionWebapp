@@ -16,13 +16,12 @@ from news_collector import fetch_flood_news, get_location_name
 
 # Page configuration
 st.set_page_config(
-    page_title="Flash Flood Prediction",
-    page_icon="🌊",
+    page_title="FLASH: An AI Chatbot for Real-Time Flash Flood Risk Detection and Information Dissemination",
     layout="wide"
 )
 
 # Title and description
-st.title("Flash Flood Prediction App")
+st.title("FLASH: An AI Chatbot for Real-Time Flash Flood Risk Detection and Information Dissemination")
 st.markdown("""
 This application predicts the probability of a flash flood at a specific USGS site based on historical streamflow data.
 Select your location and a date to get started.
