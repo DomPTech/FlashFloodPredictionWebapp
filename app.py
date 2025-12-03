@@ -439,13 +439,13 @@ else:
                     news_items = fetch_flood_news(location_name)
                     
                     if news_items:
-                        st.write(f"Found {len(news_items)} news items:")
-                        for item in news_items:
+                        st.write(f"Found {len(news_items)} news items (showing top 5):")
+                        for item in news_items[:5]:  # Limit to 5 items
                             # Clean up summary HTML tags if any (basic)
                             summary_text = item['summary'].replace("<b>", "**").replace("</b>", "**").replace("&nbsp;", " ")
                             
-                            with st.expander(f"{item['title']}", expanded=False):
-                                st.caption(f"{item['published']} | {item['source']}")
+                            with st.expander(f"{item['title']} - {item['published']}", expanded=False):
+                                st.caption(f"{item['source']}")
                                 st.markdown(summary_text, unsafe_allow_html=True)
                                 st.markdown(f"[Read full article]({item['link']})")
                     else:
@@ -520,7 +520,7 @@ else:
         tips = get_red_cross_safety_tips()
         
         for category, items in tips.items():
-            with st.expander(f"**{category}**", expanded=True):
+            with st.expander(f"**{category}**", expanded=False):
                 for item in items:
                     st.markdown(f"- {item}")
         
@@ -532,7 +532,7 @@ else:
         shelter_info = get_shelter_info()
         
         for category, items in shelter_info.items():
-            with st.expander(f"**{category}**", expanded=True):
+            with st.expander(f"**{category}**", expanded=False):
                 for item in items:
                     st.markdown(f"- {item}")
         
