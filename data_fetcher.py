@@ -147,3 +147,64 @@ def fetch_historical_streamflow_data(site_number, start_date, end_date):
         return df
     else:
         raise Exception(f"Error fetching historical data: {response.status_code} - {response.text}")
+
+def fetch_realtime_streamflow_data(site_number, lookback_days=7):
+    """
+    Fetch real-time instantaneous streamflow data from the USGS NWIS service.
+
+    Parameters:
+    - site_number: USGS site number for the streamgage.
+    - lookback_days: Number of days to look back for data.
+
+    Returns:
+    - DataFrame containing instantaneous streamflow data.
+    """
+    base_url = "https://waterservices.usgs.gov/nwis/iv/"
+    
+    # Calculate period in ISO8601 duration format (e.g., P7D)
+    period = f"P{lookback_days}D"
+
+    # Parameters for the API request
+    params = {
+        'format': 'json',
+        'sites': site_number,
+        'period': period,
+        'parameterCd': '00060',  # Streamflow
+        'siteStatus': 'active'
+    }
+
+    response = requests.get(base_url, params=params)
+
+    if response.status_code == 200:
+        data = response.json()
+        if 'value' not in data or 'timeSeries' not in data['value'] or not data['value']['timeSeries']:
+            return pd.DataFrame(columns=['date_time', 'streamflow_cfs'])
+
+        time_series = data['value']['timeSeries']
+        records = []
+
+        for series in time_series:
+            # Check if values exist
+            if not series['values'] or not series['values'][0]['value']:
+                continue
+                
+            values = series['values'][0]["value"]
+            for occurrence in values:
+                record = {
+                    'date_time': occurrence["dateTime"],
+                    'streamflow_cfs': occurrence["value"]
+                }
+                records.append(record)
+
+        df = pd.DataFrame(records)
+        if not df.empty:
+            df['date_time'] = pd.to_datetime(df['date_time'], utc=True)
+            # Remove timezone awareness for consistency with other parts of the app if needed
+            # but keep it if the model expects it. Looking at feature_engineering.py, 
+            # it just uses pd.to_datetime.
+            df['date_time'] = df['date_time'].dt.tz_localize(None)
+        else:
+            df = pd.DataFrame(columns=['date_time', 'streamflow_cfs'])
+        return df
+    else:
+        raise Exception(f"Error fetching real-time data: {response.status_code} - {response.text}")

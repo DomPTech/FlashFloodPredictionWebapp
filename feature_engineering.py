@@ -24,6 +24,10 @@ def add_features(df, window_size='7D'):
     df['streamflow_diff'] = df['streamflow_cfs'].diff()
     df['streamflow_pct_change'] = df['streamflow_cfs'].pct_change()
 
+    # Handle infinity and NaN
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.fillna(0, inplace=True)
+
     # Drop missing values
     df.dropna(inplace=True)
     df.reset_index(inplace=True)

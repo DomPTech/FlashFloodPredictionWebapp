@@ -399,6 +399,9 @@ else:
                         if prob is not None:
                             st.metric(label="Flood Probability", value=f"{prob:.2%}")
                             
+                            source_text = "Real-time" if (prediction_date == datetime.now().date()) else "Historical"
+                            st.caption(f"Data source: {source_text} USGS Streamflow")
+
                             if prob < 0.3:
                                 st.success("Low Risk")
                             elif prob < 0.7:
